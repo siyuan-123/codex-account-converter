@@ -102,36 +102,9 @@
 
           <label>输出格式</label>
           <select id="target">
-            <option value="standard">标准 TXT（JSONL）</option>
             <option value="sub">Sub2API JSON</option>
             <option value="cpa">CPA tar</option>
-            <option value="cpa-jsons">CPA 单账号 JSON 合集（文本预览）</option>
           </select>
-
-          <div class="row">
-            <div>
-              <label>concurrency</label>
-              <input id="concurrency" type="number" min="1" value="10" />
-            </div>
-            <div>
-              <label>priority</label>
-              <input id="priority" type="number" min="1" value="1" />
-            </div>
-          </div>
-
-          <div class="row">
-            <div>
-              <label>rate_multiplier</label>
-              <input id="rateMultiplier" type="number" min="0" step="0.1" value="1" />
-            </div>
-            <div>
-              <label>CPA disabled</label>
-              <select id="disabled">
-                <option value="false">false</option>
-                <option value="true">true</option>
-              </select>
-            </div>
-          </div>
 
           <label>下载文件名</label>
           <input id="filename" type="text" value="codex_accounts" />
@@ -147,7 +120,7 @@
           <div id="preview" class="preview">暂无</div>
 
           <div class="hint">
-            标准字段至少需要：<code>email</code>、<code>access_token</code>、<code>refresh_token</code>、<code>id_token</code>、<code>account_id</code>、<code>expires_at</code>。缺少个别字段时会尽量转换，但目标程序可能无法导入。
+            直接粘贴软件生成的账号 TXT，选择目标格式后点击下载即可。
           </div>
         </div>
       </aside>
@@ -279,9 +252,9 @@
   }
 
   function toSubJson(records) {
-    const concurrency = Number($('concurrency').value || 10);
-    const priority = Number($('priority').value || 1);
-    const rateMultiplier = Number($('rateMultiplier').value || 1);
+    const concurrency = 10;
+    const priority = 1;
+    const rateMultiplier = 1;
     const accounts = records.map(r => {
       const credentials = {
         access_token: r.access_token || '',
@@ -320,7 +293,7 @@
       expired: formatShanghai(r.expires_at),
       id_token: r.id_token || '',
       account_id: r.account_id || '',
-      disabled: $('disabled').value === 'true',
+      disabled: false,
       access_token: r.access_token || '',
       last_refresh: nowShanghai(),
       refresh_token: r.refresh_token || ''
@@ -419,16 +392,9 @@
   function buildOutput(records) {
     const target = $('target').value;
     const base = baseName();
-    if (target === 'standard') {
-      return { blob: new Blob([toStandardText(records)], { type: 'text/plain;charset=utf-8' }), filename: base + '.txt', previewText: toStandardText(records).slice(0, 2000) };
-    }
     if (target === 'sub') {
       const text = toSubJson(records);
       return { blob: new Blob([text], { type: 'application/json;charset=utf-8' }), filename: base + '_sub.json', previewText: text.slice(0, 2000) };
-    }
-    if (target === 'cpa-jsons') {
-      const text = toCpaJsonsText(records);
-      return { blob: new Blob([text], { type: 'text/plain;charset=utf-8' }), filename: base + '_cpa_jsons.txt', previewText: text.slice(0, 2000) };
     }
     const tar = toCpaTar(records);
     return { blob: new Blob([tar], { type: 'application/x-tar' }), filename: base + '_cpa.tar', previewText: `CPA tar：${records.length} 个 JSON 文件，大小 ${tar.length} bytes` };
