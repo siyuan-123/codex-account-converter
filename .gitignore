@@ -1,0 +1,5 @@
+# 本目录是 Render 静态站点仓库根目录
+.DS_Store
+Thumbs.db
+*.log
+tmp_*

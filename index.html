@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Codex 账号格式转换器</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #0f172a;
+      --panel: #111827;
+      --panel2: #1f2937;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --line: #374151;
+      --primary: #2563eb;
+      --primary2: #1d4ed8;
+      --danger: #ef4444;
+      --ok: #22c55e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #111827 45%, #020617 100%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 18px 44px; }
+    header { margin-bottom: 18px; }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    .sub { color: var(--muted); line-height: 1.7; }
+    .grid { display: grid; grid-template-columns: 1fr 360px; gap: 16px; align-items: start; }
+    .card {
+      background: rgba(17, 24, 39, 0.86);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: 0 14px 40px rgba(0,0,0,.25);
+      overflow: hidden;
+    }
+    .card h2 { margin: 0; padding: 14px 16px; font-size: 17px; border-bottom: 1px solid var(--line); background: rgba(31, 41, 55, .72); }
+    .body { padding: 16px; }
+    textarea {
+      width: 100%; min-height: 460px; resize: vertical;
+      border: 1px solid var(--line); border-radius: 10px; padding: 12px;
+      background: #020617; color: #d1d5db; font: 13px/1.5 Consolas, Monaco, monospace;
+      outline: none;
+    }
+    textarea:focus, select:focus, input:focus { border-color: #60a5fa; box-shadow: 0 0 0 3px rgba(37,99,235,.22); }
+    label { display: block; color: var(--muted); font-size: 13px; margin: 12px 0 6px; }
+    select, input[type="text"], input[type="number"] {
+      width: 100%; height: 38px; border-radius: 9px; border: 1px solid var(--line);
+      background: #020617; color: var(--text); padding: 0 10px;
+    }
+    input[type="file"] { width: 100%; color: var(--muted); }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .btns { display: grid; gap: 10px; margin-top: 14px; }
+    button {
+      border: 0; border-radius: 10px; height: 42px; cursor: pointer; color: white; font-weight: 700;
+      background: var(--primary); transition: .15s background, .15s transform;
+    }
+    button:hover { background: var(--primary2); transform: translateY(-1px); }
+    button.secondary { background: #374151; }
+    button.secondary:hover { background: #4b5563; }
+    button.danger { background: #991b1b; }
+    button.danger:hover { background: #7f1d1d; }
+    .msg { margin-top: 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); color: var(--muted); line-height: 1.6; white-space: pre-wrap; }
+    .msg.ok { color: #bbf7d0; border-color: rgba(34,197,94,.45); background: rgba(34,197,94,.08); }
+    .msg.err { color: #fecaca; border-color: rgba(239,68,68,.45); background: rgba(239,68,68,.08); }
+    .hint { color: var(--muted); font-size: 13px; line-height: 1.75; margin-top: 12px; }
+    code { background: rgba(148,163,184,.16); padding: 1px 5px; border-radius: 5px; }
+    .small { font-size: 12px; color: var(--muted); }
+    .preview { max-height: 170px; overflow: auto; background: #020617; border: 1px solid var(--line); border-radius: 10px; padding: 10px; font: 12px/1.5 Consolas, Monaco, monospace; color: #d1d5db; white-space: pre-wrap; word-break: break-all; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } textarea { min-height: 320px; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Codex 账号格式转换器</h1>
+      <div class="sub">支持直接粘贴软件生成的标准 TXT（JSONL，一行一个账号），也支持上传文件。所有转换都在浏览器本地完成。</div>
+    </header>
+
+    <div class="grid">
+      <section class="card">
+        <h2>账号数据</h2>
+        <div class="body">
+          <textarea id="input" spellcheck="false" placeholder='粘贴标准 TXT，例如：
+{"type":"codex","email":"a@example.com","access_token":"...","refresh_token":"...","id_token":"...","account_id":"...","expires_at":1779655397}
+{"type":"codex","email":"b@example.com","access_token":"...","refresh_token":"...","id_token":"...","account_id":"...","expires_at":1779655392}'></textarea>
+          <div class="hint">
+            可识别输入：<code>标准 TXT/JSONL</code>、<code>Sub2API JSON</code>、<code>单账号 JSON</code>。CPA tar 建议作为输出格式下载使用。
+          </div>
+        </div>
+      </section>
+
+      <aside class="card">
+        <h2>转换设置</h2>
+        <div class="body">
+          <label>上传文件（可选）</label>
+          <input id="file" type="file" accept=".txt,.json,.jsonl,application/json,text/plain" />
+
+          <label>输出格式</label>
+          <select id="target">
+            <option value="standard">标准 TXT（JSONL）</option>
+            <option value="sub">Sub2API JSON</option>
+            <option value="cpa">CPA tar</option>
+            <option value="cpa-jsons">CPA 单账号 JSON 合集（文本预览）</option>
+          </select>
+
+          <div class="row">
+            <div>
+              <label>concurrency</label>
+              <input id="concurrency" type="number" min="1" value="10" />
+            </div>
+            <div>
+              <label>priority</label>
+              <input id="priority" type="number" min="1" value="1" />
+            </div>
+          </div>
+
+          <div class="row">
+            <div>
+              <label>rate_multiplier</label>
+              <input id="rateMultiplier" type="number" min="0" step="0.1" value="1" />
+            </div>
+            <div>
+              <label>CPA disabled</label>
+              <select id="disabled">
+                <option value="false">false</option>
+                <option value="true">true</option>
+              </select>
+            </div>
+          </div>
+
+          <label>下载文件名</label>
+          <input id="filename" type="text" value="codex_accounts" />
+
+          <div class="btns">
+            <button id="convertBtn">一键转换并下载</button>
+            <button id="previewBtn" class="secondary">解析预览</button>
+            <button id="clearBtn" class="danger">清空</button>
+          </div>
+
+          <div id="msg" class="msg">等待输入账号数据。</div>
+          <label>预览</label>
+          <div id="preview" class="preview">暂无</div>
+
+          <div class="hint">
+            标准字段至少需要：<code>email</code>、<code>access_token</code>、<code>refresh_token</code>、<code>id_token</code>、<code>account_id</code>、<code>expires_at</code>。缺少个别字段时会尽量转换，但目标程序可能无法导入。
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const input = $('input');
+  const file = $('file');
+  const msg = $('msg');
+  const preview = $('preview');
+
+  function setMsg(text, type) {
+    msg.className = 'msg' + (type ? ' ' + type : '');
+    msg.textContent = text;
+  }
+
+  function safeString(value) {
+    return value == null ? '' : String(value).trim();
+  }
+
+  function toEpochSeconds(value) {
+    if (value == null || value === '') return Math.floor(Date.now() / 1000) + 3600;
+    if (typeof value === 'number' && Number.isFinite(value)) return Math.floor(value);
+    const s = String(value).trim();
+    if (/^\d+(\.\d+)?$/.test(s)) return Math.floor(Number(s));
+    const t = Date.parse(s);
+    if (!Number.isNaN(t)) return Math.floor(t / 1000);
+    return Math.floor(Date.now() / 1000) + 3600;
+  }
+
+  function formatShanghai(epochSeconds) {
+    const d = new Date(toEpochSeconds(epochSeconds) * 1000);
+    const parts = new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+    }).formatToParts(d).reduce((acc, p) => (acc[p.type] = p.value, acc), {});
+    const ms = String(d.getMilliseconds()).padStart(3, '0');
+    return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}.${ms}+08:00`;
+  }
+
+  function nowShanghai() {
+    return formatShanghai(Date.now() / 1000);
+  }
+
+  function normalizeRecord(obj) {
+    const c = obj && typeof obj.credentials === 'object' ? obj.credentials : {};
+    const tokens = obj && typeof obj.tokens === 'object' ? obj.tokens : {};
+    const extra = obj && typeof obj.extra === 'object' ? obj.extra : {};
+    const email = safeString(obj.email || c.email || extra.email || obj.name);
+    const expiresAt = toEpochSeconds(obj.expires_at || c.expires_at || tokens.expires_at || obj.expired);
+    const record = {
+      type: safeString(obj.type) === 'oauth' || !obj.type ? 'codex' : safeString(obj.type),
+      email,
+      access_token: safeString(obj.access_token || c.access_token || tokens.access_token),
+      refresh_token: safeString(obj.refresh_token || c.refresh_token || tokens.refresh_token),
+      id_token: safeString(obj.id_token || c.id_token || tokens.id_token),
+      account_id: safeString(obj.account_id || c.chatgpt_account_id || obj.chatgpt_account_id),
+      user_id: safeString(obj.user_id || c.chatgpt_user_id || obj.chatgpt_user_id),
+      organization_id: safeString(obj.organization_id || c.organization_id),
+      client_id: safeString(obj.client_id || c.client_id),
+      expires_at: expiresAt,
+      plan_type: safeString(obj.plan_type || c.plan_type),
+      privacy_mode: safeString(obj.privacy_mode || c.privacy_mode || extra.privacy_mode)
+    };
+    for (const key of ['scope', 'token_type']) {
+      const value = safeString(obj[key] || c[key] || extra[key]);
+      if (value) record[key] = value;
+    }
+    return Object.fromEntries(Object.entries(record).filter(([_, v]) => v !== ''));
+  }
+
+  function parseInput(text) {
+    text = (text || '').trim();
+    if (!text) throw new Error('请输入或上传账号数据');
+
+    // 整体 JSON：Sub2API data / 单账号 / 数组。
+    try {
+      const root = JSON.parse(text);
+      if (Array.isArray(root)) return root.map(normalizeRecord);
+      if (root && Array.isArray(root.accounts)) return root.accounts.map(normalizeRecord);
+      if (root && typeof root === 'object') return [normalizeRecord(root)];
+    } catch (_) {}
+
+    // JSONL：一行一个 JSON。
+    const records = [];
+    const errors = [];
+    text.split(/\r?\n/).forEach((line, idx) => {
+      const s = line.trim();
+      if (!s) return;
+      try {
+        records.push(normalizeRecord(JSON.parse(s)));
+      } catch (err) {
+        errors.push(`第 ${idx + 1} 行不是合法 JSON：${err.message}`);
+      }
+    });
+    if (records.length && !errors.length) return records;
+    if (records.length) throw new Error(errors.slice(0, 3).join('\n'));
+    throw new Error('无法识别输入格式，请粘贴标准 TXT(JSONL) 或 Sub2API JSON');
+  }
+
+  function validate(records) {
+    const warnings = [];
+    records.forEach((r, i) => {
+      for (const key of ['email', 'access_token', 'refresh_token', 'id_token', 'account_id']) {
+        if (!r[key]) warnings.push(`第 ${i + 1} 个账号缺少 ${key}`);
+      }
+    });
+    return warnings;
+  }
+
+  function dedupe(records) {
+    const map = new Map();
+    const noKey = [];
+    for (const r of records) {
+      const key = r.account_id ? `account:${r.account_id.toLowerCase()}` :
+        r.user_id ? `user:${r.user_id.toLowerCase()}` :
+        r.email ? `email:${r.email.toLowerCase()}` :
+        r.access_token ? `access:${r.access_token}` : '';
+      if (key) map.set(key, r); else noKey.push(r);
+    }
+    return [...map.values(), ...noKey];
+  }
+
+  function toStandardText(records) {
+    return records.map(r => JSON.stringify(r)).join('\n') + '\n';
+  }
+
+  function toSubJson(records) {
+    const concurrency = Number($('concurrency').value || 10);
+    const priority = Number($('priority').value || 1);
+    const rateMultiplier = Number($('rateMultiplier').value || 1);
+    const accounts = records.map(r => {
+      const credentials = {
+        access_token: r.access_token || '',
+        chatgpt_account_id: r.account_id || '',
+        chatgpt_user_id: r.user_id || '',
+        client_id: r.client_id || 'app_EMoamEEZ73f0CkXaXp7hrann',
+        email: r.email || '',
+        expires_at: toEpochSeconds(r.expires_at),
+        id_token: r.id_token || '',
+        organization_id: r.organization_id || '',
+        plan_type: r.plan_type || '',
+        refresh_token: r.refresh_token || ''
+      };
+      Object.keys(credentials).forEach(k => { if (credentials[k] === '') delete credentials[k]; });
+      const extra = { email: r.email || '' };
+      if (r.privacy_mode) extra.privacy_mode = r.privacy_mode;
+      return {
+        name: r.email || r.account_id || 'openai-oauth',
+        platform: 'openai',
+        type: 'oauth',
+        credentials,
+        extra,
+        concurrency,
+        priority,
+        rate_multiplier: rateMultiplier,
+        auto_pause_on_expired: true
+      };
+    });
+    return JSON.stringify({ exported_at: new Date().toISOString(), proxies: [], accounts }, null, 2) + '\n';
+  }
+
+  function toCpaObject(r) {
+    return {
+      type: 'codex',
+      email: r.email || '',
+      expired: formatShanghai(r.expires_at),
+      id_token: r.id_token || '',
+      account_id: r.account_id || '',
+      disabled: $('disabled').value === 'true',
+      access_token: r.access_token || '',
+      last_refresh: nowShanghai(),
+      refresh_token: r.refresh_token || ''
+    };
+  }
+
+  function toCpaJsonsText(records) {
+    return records.map(r => {
+      const name = safeFileName((r.email || r.account_id || 'account') + '.json');
+      return `===== ${name} =====\n${JSON.stringify(toCpaObject(r), null, 2)}`;
+    }).join('\n\n') + '\n';
+  }
+
+  function safeFileName(name) {
+    return String(name || 'account').replace(/[\\/:*?"<>|\x00-\x1f]/g, '_');
+  }
+
+  function utf8Bytes(text) {
+    return new TextEncoder().encode(text);
+  }
+
+  function writeString(buf, offset, text, length) {
+    const bytes = utf8Bytes(text);
+    buf.set(bytes.slice(0, length), offset);
+  }
+
+  function writeOctal(buf, offset, length, value) {
+    const s = Math.floor(value).toString(8).padStart(length - 1, '0') + '\0';
+    writeString(buf, offset, s, length);
+  }
+
+  function tarChecksum(header) {
+    let sum = 0;
+    for (let i = 0; i < 512; i++) sum += header[i];
+    return sum;
+  }
+
+  function makeTar(files) {
+    const chunks = [];
+    for (const f of files) {
+      const data = f.data instanceof Uint8Array ? f.data : utf8Bytes(String(f.data));
+      const header = new Uint8Array(512);
+      const name = f.name.length > 100 ? f.name.slice(-100) : f.name;
+      writeString(header, 0, name, 100);
+      writeOctal(header, 100, 8, 0o644);
+      writeOctal(header, 108, 8, 0);
+      writeOctal(header, 116, 8, 0);
+      writeOctal(header, 124, 12, data.length);
+      writeOctal(header, 136, 12, Math.floor(Date.now() / 1000));
+      for (let i = 148; i < 156; i++) header[i] = 0x20;
+      header[156] = '0'.charCodeAt(0);
+      writeString(header, 257, 'ustar', 6);
+      writeString(header, 263, '00', 2);
+      writeOctal(header, 148, 8, tarChecksum(header));
+      chunks.push(header, data);
+      const pad = (512 - (data.length % 512)) % 512;
+      if (pad) chunks.push(new Uint8Array(pad));
+    }
+    chunks.push(new Uint8Array(1024));
+    const total = chunks.reduce((n, c) => n + c.length, 0);
+    const out = new Uint8Array(total);
+    let off = 0;
+    for (const c of chunks) { out.set(c, off); off += c.length; }
+    return out;
+  }
+
+  function toCpaTar(records) {
+    const used = new Map();
+    const files = records.map((r, idx) => {
+      const baseRaw = r.email || r.account_id || `account-${idx + 1}`;
+      let base = safeFileName(baseRaw) || `account-${idx + 1}`;
+      let name = `${base}.json`;
+      const count = used.get(name) || 0;
+      used.set(name, count + 1);
+      if (count) name = `${base}-${count + 1}.json`;
+      return { name, data: JSON.stringify(toCpaObject(r), null, 2) + '\n' };
+    });
+    return makeTar(files);
+  }
+
+  function download(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function baseName() {
+    return safeFileName($('filename').value || 'codex_accounts').replace(/\.(txt|json|tar)$/i, '');
+  }
+
+  function buildOutput(records) {
+    const target = $('target').value;
+    const base = baseName();
+    if (target === 'standard') {
+      return { blob: new Blob([toStandardText(records)], { type: 'text/plain;charset=utf-8' }), filename: base + '.txt', previewText: toStandardText(records).slice(0, 2000) };
+    }
+    if (target === 'sub') {
+      const text = toSubJson(records);
+      return { blob: new Blob([text], { type: 'application/json;charset=utf-8' }), filename: base + '_sub.json', previewText: text.slice(0, 2000) };
+    }
+    if (target === 'cpa-jsons') {
+      const text = toCpaJsonsText(records);
+      return { blob: new Blob([text], { type: 'text/plain;charset=utf-8' }), filename: base + '_cpa_jsons.txt', previewText: text.slice(0, 2000) };
+    }
+    const tar = toCpaTar(records);
+    return { blob: new Blob([tar], { type: 'application/x-tar' }), filename: base + '_cpa.tar', previewText: `CPA tar：${records.length} 个 JSON 文件，大小 ${tar.length} bytes` };
+  }
+
+  function getRecords() {
+    const records = dedupe(parseInput(input.value));
+    if (!records.length) throw new Error('没有解析到账号');
+    return records;
+  }
+
+  $('previewBtn').addEventListener('click', () => {
+    try {
+      const records = getRecords();
+      const warnings = validate(records);
+      preview.textContent = JSON.stringify(records.slice(0, 3), null, 2);
+      setMsg(`解析成功：${records.length} 个账号。${warnings.length ? '\n警告：\n' + warnings.slice(0, 8).join('\n') : ''}`, warnings.length ? '' : 'ok');
+    } catch (err) {
+      preview.textContent = '暂无';
+      setMsg(err.message || String(err), 'err');
+    }
+  });
+
+  $('convertBtn').addEventListener('click', () => {
+    try {
+      const records = getRecords();
+      const warnings = validate(records);
+      const out = buildOutput(records);
+      preview.textContent = out.previewText;
+      download(out.blob, out.filename);
+      setMsg(`已生成并下载：${out.filename}\n账号数量：${records.length}${warnings.length ? '\n警告：\n' + warnings.slice(0, 8).join('\n') : ''}`, warnings.length ? '' : 'ok');
+    } catch (err) {
+      setMsg(err.message || String(err), 'err');
+    }
+  });
+
+  $('clearBtn').addEventListener('click', () => {
+    input.value = '';
+    file.value = '';
+    preview.textContent = '暂无';
+    setMsg('已清空。');
+  });
+
+  file.addEventListener('change', () => {
+    const f = file.files && file.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      input.value = String(reader.result || '');
+      setMsg(`已读取文件：${f.name}`);
+    };
+    reader.onerror = () => setMsg('读取文件失败', 'err');
+    reader.readAsText(f, 'utf-8');
+  });
+})();
+</script>
+</body>
+</html>

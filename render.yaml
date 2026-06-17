@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: codex-account-converter
+    runtime: static
+    buildCommand: echo "No build step"
+    staticPublishPath: .
+    pullRequestPreviewsEnabled: false
+    headers:
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: no-referrer
+      - path: /*
+        name: Cache-Control
+        value: no-store
