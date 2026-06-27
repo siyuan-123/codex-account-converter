@@ -4,7 +4,7 @@
 
 ## 文件说明
 
-- `index.html`：转换器页面，支持粘贴/上传标准 TXT(JSONL)，并导出 Sub2API JSON / CPA tar。
+- `index.html`：转换器页面，支持粘贴/上传标准 TXT(JSONL)、Sub2API JSON、Codex-Manager JSON，并导出 Sub2API JSON / Codex-Manager JSON / CPA tar。
 - `render.yaml`：Render Blueprint 配置。
 
 ## Render 部署方式

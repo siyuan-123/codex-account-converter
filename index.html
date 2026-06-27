@@ -78,7 +78,7 @@
   <div class="wrap">
     <header>
       <h1>Codex 账号格式转换器</h1>
-      <div class="sub">支持直接粘贴软件生成的标准 TXT（JSONL，一行一个账号），也支持上传文件。所有转换都在浏览器本地完成。</div>
+      <div class="sub">支持直接粘贴软件生成的标准 TXT（JSONL，一行一个账号）、Sub2API JSON、Codex-Manager JSON，也支持上传文件。所有转换都在浏览器本地完成。</div>
     </header>
 
     <div class="grid">
@@ -89,7 +89,7 @@
 {"type":"codex","email":"a@example.com","access_token":"...","refresh_token":"...","id_token":"...","account_id":"...","expires_at":1779655397}
 {"type":"codex","email":"b@example.com","access_token":"...","refresh_token":"...","id_token":"...","account_id":"...","expires_at":1779655392}'></textarea>
           <div class="hint">
-            可识别输入：<code>标准 TXT/JSONL</code>、<code>Sub2API JSON</code>、<code>单账号 JSON</code>。CPA tar 建议作为输出格式下载使用。
+            可识别输入：<code>标准 TXT/JSONL</code>、<code>Sub2API JSON</code>、<code>Codex-Manager JSON</code>、<code>单账号 JSON</code>。CPA tar 建议作为输出格式下载使用。
           </div>
         </div>
       </section>
@@ -103,6 +103,7 @@
           <label>输出格式</label>
           <select id="target">
             <option value="sub">Sub2API JSON</option>
+            <option value="manager">Codex-Manager JSON</option>
             <option value="cpa">CPA tar</option>
           </select>
 
@@ -120,7 +121,7 @@
           <div id="preview" class="preview">暂无</div>
 
           <div class="hint">
-            直接粘贴软件生成的账号 TXT，选择目标格式后点击下载即可。
+            直接粘贴软件生成的账号 TXT 或 Codex-Manager 导入 JSON，选择目标格式后点击下载即可。
           </div>
         </div>
       </aside>
@@ -141,7 +142,9 @@
   }
 
   function safeString(value) {
-    return value == null ? '' : String(value).trim();
+    if (value == null) return '';
+    if (typeof value === 'object') return '';
+    return String(value).trim();
   }
 
   function toEpochSeconds(value) {
@@ -168,67 +171,252 @@
     return formatShanghai(Date.now() / 1000);
   }
 
+  function isPlainObject(value) {
+    return value && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  function firstByKeys(keys, containers) {
+    for (const container of containers) {
+      if (!isPlainObject(container)) continue;
+      for (const key of keys) {
+        const value = container[key];
+        if (value == null || value === '') continue;
+        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+          const s = String(value).trim();
+          if (s) return s;
+        }
+      }
+    }
+    return '';
+  }
+
+  function firstRawByKeys(keys, containers) {
+    for (const container of containers) {
+      if (!isPlainObject(container)) continue;
+      for (const key of keys) {
+        const value = container[key];
+        if (value != null && value !== '') return value;
+      }
+    }
+    return '';
+  }
+
+  function compactObject(obj) {
+    const out = {};
+    Object.entries(obj || {}).forEach(([key, value]) => {
+      if (value == null || value === '') return;
+      if (Array.isArray(value) && value.length === 0) return;
+      if (isPlainObject(value) && Object.keys(value).length === 0) return;
+      out[key] = value;
+    });
+    return out;
+  }
+
+  function normalizeTags(value) {
+    if (Array.isArray(value)) return value.map(safeString).filter(Boolean);
+    const s = safeString(value);
+    return s ? s.split(',').map(x => x.trim()).filter(Boolean) : [];
+  }
+
+  function looksLikeEmail(value) {
+    const s = safeString(value);
+    return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s) ? s : '';
+  }
+
   function normalizeRecord(obj) {
-    const c = obj && typeof obj.credentials === 'object' ? obj.credentials : {};
-    const tokens = obj && typeof obj.tokens === 'object' ? obj.tokens : {};
-    const extra = obj && typeof obj.extra === 'object' ? obj.extra : {};
-    const email = safeString(obj.email || c.email || extra.email || obj.name);
-    const expiresAt = toEpochSeconds(obj.expires_at || c.expires_at || tokens.expires_at || obj.expired);
+    obj = isPlainObject(obj) ? obj : {};
+    const c = isPlainObject(obj.credentials) ? obj.credentials : {};
+    const tokens = isPlainObject(obj.tokens) ? obj.tokens : {};
+    const meta = isPlainObject(obj.meta) ? obj.meta : {};
+    const extra = isPlainObject(obj.extra) ? obj.extra : {};
+    const rootUser = isPlainObject(obj.user) ? obj.user : {};
+    const rootAccount = isPlainObject(obj.account) ? obj.account : {};
+    const session = isPlainObject(obj.session) ? obj.session : {};
+    const sessionUser = isPlainObject(session.user) ? session.user : {};
+    const sessionAccount = isPlainObject(session.account) ? session.account : {};
+
+    const accessKeys = ['access_token', 'accessToken'];
+    const refreshKeys = ['refresh_token', 'refreshToken'];
+    const idKeys = ['id_token', 'idToken'];
+    const accountKeys = ['account_id', 'accountId'];
+    const chatgptAccountKeys = ['chatgpt_account_id', 'chatgptAccountId'];
+    const userKeys = ['user_id', 'userId', 'chatgpt_user_id', 'chatgptUserId'];
+    const workspaceKeys = ['workspace_id', 'workspaceId'];
+    const expiresKeys = ['expires_at', 'expiresAt', 'expired', 'expires', 'expiration'];
+
+    const nestedAccountId = firstByKeys(['id'], [rootAccount, sessionAccount]);
+    const nestedUserId = firstByKeys(['id'], [rootUser, sessionUser]);
+    const accountId = firstByKeys(accountKeys, [tokens, obj, c, extra, meta, sessionAccount]) || nestedAccountId;
+    const chatgptAccountId = firstByKeys(chatgptAccountKeys, [tokens, obj, meta, c, extra]) || accountId;
+    const workspaceId = firstByKeys(workspaceKeys, [meta, obj, tokens, c, extra]);
+    const label = firstByKeys(['label', 'name', 'display_name', 'displayName'], [meta, obj, extra]);
+    const email = firstByKeys(['email', 'mailbox_email', 'mailboxEmail'], [meta, obj, tokens, c, extra, rootUser, sessionUser]) ||
+      looksLikeEmail(label);
+    const expiresAt = toEpochSeconds(firstRawByKeys(expiresKeys, [tokens, obj, c, extra, meta, session]));
     const record = {
-      type: safeString(obj.type) === 'oauth' || !obj.type ? 'codex' : safeString(obj.type),
+      type: ['oauth', 'sub2api-data', ''].includes(safeString(obj.type)) ? 'codex' : safeString(obj.type),
       email,
-      access_token: safeString(obj.access_token || c.access_token || tokens.access_token),
-      refresh_token: safeString(obj.refresh_token || c.refresh_token || tokens.refresh_token),
-      id_token: safeString(obj.id_token || c.id_token || tokens.id_token),
-      account_id: safeString(obj.account_id || c.chatgpt_account_id || obj.chatgpt_account_id),
-      user_id: safeString(obj.user_id || c.chatgpt_user_id || obj.chatgpt_user_id),
-      organization_id: safeString(obj.organization_id || c.organization_id),
-      client_id: safeString(obj.client_id || c.client_id),
+      label,
+      access_token: firstByKeys(accessKeys, [tokens, obj, c, session]),
+      refresh_token: firstByKeys(refreshKeys, [tokens, obj, c, session]),
+      id_token: firstByKeys(idKeys, [tokens, obj, c, session]),
+      account_id: accountId || chatgptAccountId,
+      chatgpt_account_id: chatgptAccountId || accountId,
+      user_id: firstByKeys(userKeys, [tokens, obj, c, extra, rootUser, sessionUser]) || nestedUserId,
+      organization_id: firstByKeys(['organization_id', 'organizationId'], [tokens, obj, c, extra]),
+      client_id: firstByKeys(['client_id', 'clientId'], [tokens, obj, c, extra]),
+      workspace_id: workspaceId,
       expires_at: expiresAt,
-      plan_type: safeString(obj.plan_type || c.plan_type),
-      privacy_mode: safeString(obj.privacy_mode || c.privacy_mode || extra.privacy_mode)
+      plan_type: firstByKeys(['plan_type', 'planType', 'chatgpt_plan_type', 'chatgptPlanType'], [obj, c, extra, tokens, meta, rootAccount, sessionAccount]),
+      privacy_mode: firstByKeys(['privacy_mode', 'privacyMode'], [obj, c, extra, tokens, meta]),
+      issuer: firstByKeys(['issuer'], [meta, obj, tokens, c, extra]),
+      group_name: firstByKeys(['group_name', 'groupName'], [meta, obj, extra]),
+      note: firstByKeys(['note', 'notes'], [meta, obj, extra]),
+      tags: normalizeTags(meta.tags != null ? meta.tags : (obj.tags != null ? obj.tags : extra.tags))
     };
-    for (const key of ['scope', 'token_type']) {
-      const value = safeString(obj[key] || c[key] || extra[key]);
+    for (const key of ['scope', 'token_type', 'tokenType']) {
+      const value = firstByKeys([key], [obj, c, extra, tokens, meta]);
       if (value) record[key] = value;
     }
-    return Object.fromEntries(Object.entries(record).filter(([_, v]) => v !== ''));
+    if (record.tokenType && !record.token_type) record.token_type = record.tokenType;
+    delete record.tokenType;
+    return compactObject(record);
+  }
+
+  function hasAccountData(record) {
+    return !!(record && (record.access_token || record.refresh_token || record.id_token ||
+      record.account_id || record.chatgpt_account_id || record.workspace_id || record.email));
+  }
+
+  function appendParsedValue(value, records, depth) {
+    if (depth > 6) throw new Error('嵌套导入内容过深，请检查输入格式');
+    if (Array.isArray(value)) {
+      value.forEach(item => appendParsedValue(item, records, depth + 1));
+      return;
+    }
+    if (typeof value === 'string') {
+      appendParsedText(value, records, depth + 1);
+      return;
+    }
+    if (!isPlainObject(value)) return;
+
+    // 兼容 Codex-Manager RPC：params.contents / params.content 中保存 JSON 文本。
+    const params = isPlainObject(value.params) ? value.params : {};
+    const rpcContents = Array.isArray(params.contents) ? params.contents : null;
+    if (rpcContents) {
+      rpcContents.forEach(item => appendParsedValue(item, records, depth + 1));
+      return;
+    }
+    if (typeof params.content === 'string') {
+      appendParsedText(params.content, records, depth + 1);
+      return;
+    }
+
+    // Sub2API data/account 结构。
+    if (Array.isArray(value.accounts)) {
+      value.accounts.forEach(item => appendParsedValue(item, records, depth + 1));
+      return;
+    }
+    if (isPlainObject(value.data) && Array.isArray(value.data.accounts)) {
+      value.data.accounts.forEach(item => appendParsedValue(item, records, depth + 1));
+      return;
+    }
+
+    const record = normalizeRecord(value);
+    if (hasAccountData(record)) records.push(record);
+  }
+
+  function appendParsedText(text, records, depth) {
+    const s = (text || '').trim();
+    if (!s) return;
+    try {
+      appendParsedValue(JSON.parse(s), records, depth + 1);
+      return;
+    } catch (_) {}
+
+    const values = parseJsonValueStream(s);
+    if (values.length) {
+      values.forEach(value => appendParsedValue(value, records, depth + 1));
+      return;
+    }
+
+    // JSONL：一行一个 JSON。
+    const errors = [];
+    s.split(/\r?\n/).forEach((line, idx) => {
+      const lineText = line.trim();
+      if (!lineText) return;
+      try {
+        appendParsedValue(JSON.parse(lineText), records, depth + 1);
+      } catch (err) {
+        errors.push(`第 ${idx + 1} 行不是合法 JSON：${err.message}`);
+      }
+    });
+    if (errors.length) throw new Error(errors.slice(0, 3).join('\n'));
+  }
+
+  function parseJsonValueStream(text) {
+    const values = [];
+    let start = -1;
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (start < 0) {
+        if (/\s/.test(ch)) continue;
+        if (ch !== '{' && ch !== '[') return [];
+        start = i;
+        depth = 1;
+        inString = false;
+        escape = false;
+        continue;
+      }
+      if (inString) {
+        if (escape) {
+          escape = false;
+        } else if (ch === '\\') {
+          escape = true;
+        } else if (ch === '"') {
+          inString = false;
+        }
+        continue;
+      }
+      if (ch === '"') {
+        inString = true;
+      } else if (ch === '{' || ch === '[') {
+        depth++;
+      } else if (ch === '}' || ch === ']') {
+        depth--;
+        if (depth === 0) {
+          try {
+            values.push(JSON.parse(text.slice(start, i + 1)));
+          } catch (_) {
+            return [];
+          }
+          start = -1;
+        }
+      }
+    }
+    return start < 0 ? values : [];
   }
 
   function parseInput(text) {
     text = (text || '').trim();
     if (!text) throw new Error('请输入或上传账号数据');
-
-    // 整体 JSON：Sub2API data / 单账号 / 数组。
-    try {
-      const root = JSON.parse(text);
-      if (Array.isArray(root)) return root.map(normalizeRecord);
-      if (root && Array.isArray(root.accounts)) return root.accounts.map(normalizeRecord);
-      if (root && typeof root === 'object') return [normalizeRecord(root)];
-    } catch (_) {}
-
-    // JSONL：一行一个 JSON。
     const records = [];
-    const errors = [];
-    text.split(/\r?\n/).forEach((line, idx) => {
-      const s = line.trim();
-      if (!s) return;
-      try {
-        records.push(normalizeRecord(JSON.parse(s)));
-      } catch (err) {
-        errors.push(`第 ${idx + 1} 行不是合法 JSON：${err.message}`);
-      }
-    });
-    if (records.length && !errors.length) return records;
-    if (records.length) throw new Error(errors.slice(0, 3).join('\n'));
-    throw new Error('无法识别输入格式，请粘贴标准 TXT(JSONL) 或 Sub2API JSON');
+    appendParsedText(text, records, 0);
+    if (records.length) return records;
+    throw new Error('无法识别输入格式，请粘贴标准 TXT(JSONL)、Sub2API JSON 或 Codex-Manager JSON');
   }
 
   function validate(records) {
     const warnings = [];
     records.forEach((r, i) => {
-      for (const key of ['email', 'access_token', 'refresh_token', 'id_token', 'account_id']) {
-        if (!r[key]) warnings.push(`第 ${i + 1} 个账号缺少 ${key}`);
+      if (!r.access_token) warnings.push(`第 ${i + 1} 个账号缺少 access_token（Codex-Manager 导入会失败）`);
+      if (!r.refresh_token) warnings.push(`第 ${i + 1} 个账号缺少 refresh_token（后续不能自动刷新 AT）`);
+      if (!r.id_token) warnings.push(`第 ${i + 1} 个账号缺少 id_token（身份识别信息较少）`);
+      if (!(r.chatgpt_account_id || r.account_id || r.workspace_id || r.email)) {
+        warnings.push(`第 ${i + 1} 个账号缺少账号标识（建议提供 account_id/chatgpt_account_id/workspace_id/email）`);
       }
     });
     return warnings;
@@ -238,7 +426,9 @@
     const map = new Map();
     const noKey = [];
     for (const r of records) {
-      const key = r.account_id ? `account:${r.account_id.toLowerCase()}` :
+      const key = r.chatgpt_account_id ? `chatgpt_account:${r.chatgpt_account_id.toLowerCase()}` :
+        r.account_id ? `account:${r.account_id.toLowerCase()}` :
+        r.workspace_id ? `workspace:${r.workspace_id.toLowerCase()}` :
         r.user_id ? `user:${r.user_id.toLowerCase()}` :
         r.email ? `email:${r.email.toLowerCase()}` :
         r.access_token ? `access:${r.access_token}` : '';
@@ -258,7 +448,7 @@
     const accounts = records.map(r => {
       const credentials = {
         access_token: r.access_token || '',
-        chatgpt_account_id: r.account_id || '',
+        chatgpt_account_id: r.chatgpt_account_id || r.account_id || '',
         chatgpt_user_id: r.user_id || '',
         client_id: r.client_id || 'app_EMoamEEZ73f0CkXaXp7hrann',
         email: r.email || '',
@@ -271,8 +461,12 @@
       Object.keys(credentials).forEach(k => { if (credentials[k] === '') delete credentials[k]; });
       const extra = { email: r.email || '' };
       if (r.privacy_mode) extra.privacy_mode = r.privacy_mode;
+      if (r.workspace_id) extra.workspace_id = r.workspace_id;
+      if (r.group_name) extra.group_name = r.group_name;
+      if (r.note) extra.note = r.note;
+      if (Array.isArray(r.tags) && r.tags.length) extra.tags = r.tags;
       return {
-        name: r.email || r.account_id || 'openai-oauth',
+        name: r.label || r.email || r.chatgpt_account_id || r.account_id || 'openai-oauth',
         platform: 'openai',
         type: 'oauth',
         credentials,
@@ -286,13 +480,38 @@
     return JSON.stringify({ exported_at: new Date().toISOString(), proxies: [], accounts }, null, 2) + '\n';
   }
 
+  function toCodexManagerJson(records) {
+    const accounts = records.map((r, idx) => {
+      const chatgptAccountId = r.chatgpt_account_id || r.account_id || '';
+      const tokens = compactObject({
+        access_token: r.access_token || '',
+        id_token: r.id_token || '',
+        refresh_token: r.refresh_token || '',
+        account_id: r.account_id || chatgptAccountId,
+        chatgpt_account_id: chatgptAccountId
+      });
+      const label = r.label || r.email || chatgptAccountId || `账号${idx + 1}`;
+      const meta = compactObject({
+        label,
+        issuer: r.issuer || 'https://auth.openai.com',
+        group_name: r.group_name || '',
+        note: r.note || '',
+        tags: Array.isArray(r.tags) && r.tags.length ? r.tags : ['imported'],
+        workspace_id: r.workspace_id || '',
+        chatgpt_account_id: chatgptAccountId
+      });
+      return compactObject({ tokens, meta });
+    });
+    return JSON.stringify(accounts, null, 2) + '\n';
+  }
+
   function toCpaObject(r) {
     return {
       type: 'codex',
       email: r.email || '',
       expired: formatShanghai(r.expires_at),
       id_token: r.id_token || '',
-      account_id: r.account_id || '',
+      account_id: r.chatgpt_account_id || r.account_id || '',
       disabled: false,
       access_token: r.access_token || '',
       last_refresh: nowShanghai(),
@@ -395,6 +614,10 @@
     if (target === 'sub') {
       const text = toSubJson(records);
       return { blob: new Blob([text], { type: 'application/json;charset=utf-8' }), filename: base + '_sub.json', previewText: text.slice(0, 2000) };
+    }
+    if (target === 'manager') {
+      const text = toCodexManagerJson(records);
+      return { blob: new Blob([text], { type: 'application/json;charset=utf-8' }), filename: base + '_codex_manager.json', previewText: text.slice(0, 2000) };
     }
     const tar = toCpaTar(records);
     return { blob: new Blob([tar], { type: 'application/x-tar' }), filename: base + '_cpa.tar', previewText: `CPA tar：${records.length} 个 JSON 文件，大小 ${tar.length} bytes` };
